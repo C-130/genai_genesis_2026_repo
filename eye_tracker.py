@@ -27,6 +27,10 @@ import time
 import sys
 import os
 
+from elevenlabs.client import ElevenLabs
+from elevenlabs.play import play
+from dotenv import load_dotenv
+
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 from mediapipe.tasks.python.vision import FaceLandmarkerOptions, FaceLandmarker
@@ -81,6 +85,15 @@ def main():
     t0           = time.time()
     GRACE_FRAMES = 60
     frame_count  = 0
+
+    #------Eleven Labs Setup ───────────────────────────────────────────────────────────────
+    load_dotenv()  # Load environment variables from .env file
+    eleven_api_key = os.getenv("ELEVEN_LAB_API_KEY")
+    client = ElevenLabs(
+        api_key=eleven_api_key
+    )
+
+    sentence = ""
 
     while True:
         ret, frame = cap.read()
@@ -200,9 +213,24 @@ def main():
             print("🔄  Neutral baseline reset — look straight ahead.")
         elif key == 0:   # up arrow (cv2 keycode on most platforms)
             typed = kb.press()
-            if typed:
+            print(f"Key pressed: {typed}")
+            if typed == 'ENT':
+                audio = client.text_to_speech.convert(
+                    text=sentence,
+                    voice_id="JBFqnCBsd6RMkjVDRZzb",
+                    model_id="eleven_multilingual_v2",
+                    output_format="mp3_44100_128",
+                )
+                play(audio)
+                print(sentence)
+                sentence = ""
+            elif typed == '<-':
                 print(f"⌨  '{typed}'  →  {kb.typed}")
-
+                sentence = sentence[:-1]
+            elif typed:
+                print(f"⌨  '{typed}'  →  {kb.typed}")
+                sentence += typed
+  
     cap.release()
     cv2.destroyAllWindows()
     detector.close()

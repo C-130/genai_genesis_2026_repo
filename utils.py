@@ -140,7 +140,7 @@ def draw_direction_hint(frame, sdx, sdy, w, h):
 
 # ── Gaze-Driven Cursor ─────────────────────────────────────────────────────────
 # Tuning knobs — adjust to taste
-CURSOR_SPEED      = 400   # max pixels/second at full deflection
+CURSOR_SPEED      = 800   # max pixels/second at full deflection
 DEAD_ZONE_X       = 0.12  # horizontal dead zone
 DEAD_ZONE_Y       = 0.12  # vertical dead zone — raised; baseline subtraction handles drift
 SMOOTH_ALPHA      = 0.20  # EMA smoothing for raw offset
@@ -154,10 +154,10 @@ CAL_GRID = [(cx, cy)
 # ── Virtual Keyboard ───────────────────────────────────────────────────────────
 # 4 rows: numbers/symbols, QWERTY, ASDF, ZXCV + specials
 KB_ROWS = [
-    ['1','2','3','4','5','6','7','8','9','0','-','.'],
+    ['1','2','3','4','5','6','7','8','9','0','.'],
     ['Q','W','E','R','T','Y','U','I','O','P'],
-    ['A','S','D','F','G','H','J','K','L',';'],
-    ['Z','X','C','V','B','N','M',',','⌫','SPC'],
+    ['A','S','D','F','G','H','J','K','L','ENT'],
+    ['Z','X','C','V','B','N','M',',','<-','SPC'],
 ]
 
 # The keyboard fills the full frame (set dynamically in VirtualKeyboard.__init__)
