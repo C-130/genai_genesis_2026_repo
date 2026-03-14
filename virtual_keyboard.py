@@ -120,6 +120,8 @@ class VirtualKeyboard:
         self._fire(self.hover_key)
         self.flash_key = self.hover_key
         self.flash_t   = time.time()
+        if self.hover_key == 'SPC':
+            return ' '
         return self.hover_key
 
     def _fire(self, label):
