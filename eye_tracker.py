@@ -36,10 +36,18 @@ from mediapipe.tasks.python import vision as mp_vision
 from mediapipe.tasks.python.vision import FaceLandmarkerOptions, FaceLandmarker
 from mediapipe import Image, ImageFormat
 
-from utils import ensure_model, MODEL_PATH, LEFT_IRIS, RIGHT_IRIS, LEFT_EYE_CORNERS, RIGHT_EYE_CORNERS, LEFT_EYE_LIDS, RIGHT_EYE_LIDS, LEFT_EYE_INNER, RIGHT_EYE_INNER, iris_center, eye_bounds, gaze_ratio, gaze_offset, draw_gaze_dot, draw_cal_dot, draw_eye_box, draw_hud, draw_direction_hint, CAL_GRID, SMOOTH_ALPHA
+from utils import (
+    ensure_model, MODEL_PATH,
+    LEFT_IRIS, RIGHT_IRIS, LEFT_EYE_CORNERS, RIGHT_EYE_CORNERS,
+    LEFT_EYE_LIDS, RIGHT_EYE_LIDS, LEFT_EYE_INNER, RIGHT_EYE_INNER,
+    iris_center, eye_bounds, gaze_ratio, gaze_offset,
+    draw_gaze_dot, draw_cal_dot, draw_eye_box, draw_hud,
+    draw_direction_hint, CAL_GRID, SMOOTH_ALPHA,
+)
 from gaze_cursor import GazeCursor
 from calibrator import Calibrator
 from virtual_keyboard import VirtualKeyboard
+from answer_predictor_realtime import WordPredictor
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
@@ -69,31 +77,27 @@ def main():
     print("   Press SPACE to start keyboard calibration (for dwell typing).")
     print("   Press Q or ESC to quit.\n")
 
-    # Calibration is still used to anchor the keyboard hit-zones (optional)
-    cal          = Calibrator()
+    cal    = Calibrator()
+    cursor = GazeCursor(w, h)
+    kb     = VirtualKeyboard(frame_w=w, frame_h=h)
 
-    # Direction-based cursor — works immediately, no calibration required
-    cursor       = GazeCursor(w, h)
-
-    # Virtual keyboard
-    kb           = VirtualKeyboard(frame_w=w, frame_h=h)
+    # ── Word Predictor (background threads) ───────────────────────────────────
+    predictor = WordPredictor()
+    predictor.start()
 
     # Smoothed raw gaze offsets (for direction hint display)
     _sdx = 0.0
     _sdy = 0.0
 
-    t0           = time.time()
+    # ── ElevenLabs TTS ────────────────────────────────────────────────────────
+    load_dotenv()
+    eleven_api_key = os.getenv("ELEVEN_LAB_API_KEY")
+    tts_client = ElevenLabs(api_key=eleven_api_key)
+
+    sentence    = ""
+    t0          = time.time()
     GRACE_FRAMES = 60
     frame_count  = 0
-
-    #------Eleven Labs Setup ───────────────────────────────────────────────────────────────
-    load_dotenv()  # Load environment variables from .env file
-    eleven_api_key = os.getenv("ELEVEN_LAB_API_KEY")
-    client = ElevenLabs(
-        api_key=eleven_api_key
-    )
-
-    sentence = ""
 
     while True:
         ret, frame = cap.read()
@@ -107,8 +111,8 @@ def main():
         mp_img = Image(image_format=ImageFormat.SRGB, data=rgb)
         result = detector.detect(mp_img)
 
-        raw_dx, raw_dy = 0.0, 0.0   # gaze direction this frame
-        gaze_rx, gaze_ry = 0.5, 0.5  # for calibration dot collection
+        raw_dx, raw_dy = 0.0, 0.0
+        gaze_rx, gaze_ry = 0.5, 0.5
 
         if result.face_landmarks:
             lm = result.face_landmarks[0]
@@ -119,17 +123,14 @@ def main():
             lx0, lx1, ly0, ly1 = eye_bounds(lm, LEFT_EYE_CORNERS,  LEFT_EYE_LIDS,  w, h)
             rx0, rx1, ry0, ry1 = eye_bounds(lm, RIGHT_EYE_CORNERS, RIGHT_EYE_LIDS, w, h)
 
-            # Stable vertical anchors: inner eye corner Y (doesn't move with lid)
             l_corner_y = lm[LEFT_EYE_INNER].y  * h
             r_corner_y = lm[RIGHT_EYE_INNER].y * h
 
-            # Direction offsets from each eye centre, averaged
             l_dx, l_dy = gaze_offset(l_iris, lx0, lx1, ly0, ly1, l_corner_y)
             r_dx, r_dy = gaze_offset(r_iris, rx0, rx1, ry0, ry1, r_corner_y)
             raw_dx = (l_dx + r_dx) / 2
             raw_dy = (l_dy + r_dy) / 2
 
-            # Also compute ratio for optional calibration collection
             l_rx, l_ry = gaze_ratio(l_iris, lx0, lx1, ly0, ly1)
             r_rx, r_ry = gaze_ratio(r_iris, rx0, rx1, ry0, ry1)
             gaze_rx    = (l_rx + r_rx) / 2
@@ -141,27 +142,26 @@ def main():
             draw_eye_box(frame, l_iris, lx0, lx1, ly0, ly1)
             draw_eye_box(frame, r_iris, rx0, rx1, ry0, ry1)
 
-        # ── Update & draw cursor (always active) ──────────────────────────
+        # ── Update cursor ─────────────────────────────────────────────────
         cursor.update(raw_dx, raw_dy)
         cx, cy = cursor.pos()
 
-        # ── Smooth direction signal for hint display ───────────────────────
         _sdx += SMOOTH_ALPHA * (raw_dx - _sdx)
         _sdy += SMOOTH_ALPHA * (raw_dy - _sdy)
 
-        # ── Keyboard overlay (shown once calibration done OR always?) ──────
-        # Show keyboard always after first SPACE press — calibration just
-        # improves the initial layout offset; cursor works without it.
+        # ── Feed latest suggestions to keyboard each frame ─────────────────
+        kb.set_suggestions(predictor.suggestions)
+
+        # ── Keyboard overlay ──────────────────────────────────────────────
         kb.update_gaze(cx, cy)
         kb.draw(frame)
 
         # Draw cursor on top of keyboard
         cursor.draw(frame)
 
-        # Direction hint arrows
         draw_direction_hint(frame, _sdx, _sdy, w, h)
 
-        # ── Calibration dots ───────────────────────────────────────────────
+        # ── Calibration dots ──────────────────────────────────────────────
         if cal.active and not cal.done:
             target = cal.current_target(w, h)
             if target:
@@ -187,6 +187,14 @@ def main():
                     (10, h - 42),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.42, (140,140,140), 1, cv2.LINE_AA)
 
+        # Show last transcript in HUD
+        transcript = predictor.last_transcript
+        if transcript:
+            cv2.putText(frame,
+                        f"heard: {transcript[-60:]}",
+                        (10, h - 24),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (100, 200, 100), 1, cv2.LINE_AA)
+
         cv2.imshow("Eye Tracker", frame)
 
         key = cv2.waitKey(1) & 0xFF
@@ -211,11 +219,19 @@ def main():
         elif key == ord('n'):
             cursor.reset_baseline()
             print("🔄  Neutral baseline reset — look straight ahead.")
-        elif key == 0:   # up arrow (cv2 keycode on most platforms)
+        elif key == 0:   # up arrow
             typed = kb.press()
             print(f"Key pressed: {typed}")
-            if typed == 'ENT':
-                audio = client.text_to_speech.convert(
+
+            # Suggestion chip selected — extract the actual word
+            if typed.startswith("__SUGG__"):
+                word = typed[len("__SUGG__"):]
+                # kb._fire already updated kb.typed; sync sentence to kb.typed
+                sentence = kb.typed
+                print(f"💡  Suggestion selected: '{word}'  →  {kb.typed!r}")
+
+            elif typed == 'ENT':
+                audio = tts_client.text_to_speech.convert(
                     text=sentence,
                     voice_id="JBFqnCBsd6RMkjVDRZzb",
                     model_id="eleven_multilingual_v2",
@@ -224,17 +240,20 @@ def main():
                 play(audio)
                 print(sentence)
                 sentence = ""
+
             elif typed == '<-':
-                print(f"⌨  '{typed}'  →  {kb.typed}")
                 sentence = sentence[:-1]
-            elif typed:
                 print(f"⌨  '{typed}'  →  {kb.typed}")
+
+            elif typed:
                 sentence += typed
-  
+                print(f"⌨  '{typed}'  →  {kb.typed}")
+
     cap.release()
     cv2.destroyAllWindows()
     detector.close()
     print("👋  Done.")
+
 
 if __name__ == "__main__":
     main()

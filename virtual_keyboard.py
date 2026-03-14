@@ -1,7 +1,12 @@
-# ── keyboard.py ───────────────────────────────────────────────────────────────
+# ── virtual_keyboard.py ───────────────────────────────────────────────────────
 # Full-screen transparent virtual keyboard overlay.
 # Typing is triggered by pressing the UP ARROW key while the gaze cursor
 # hovers over the desired key.
+#
+# Additions:
+#   • Suggestion bar rendered above the keyboard rows.
+#     Call kb.set_suggestions(["word1", "word2", "word3"]) each frame.
+#     Hovering a suggestion chip + UP ARROW types that word + a space.
 
 import cv2
 import time
@@ -12,6 +17,11 @@ from utils import (
     COL_KEY_FLASH, COL_KEY_TEXT, COL_TEXT_BAR, COL_TEXT_FG,
 )
 
+# Height reserved for the suggestion bar (sits just above the first key row)
+SUGGEST_BAR_H = 48
+# Prefix used internally to distinguish suggestion keys from letter keys
+_SUGG_PREFIX  = "__SUGG__"
+
 
 class VirtualKeyboard:
     """Full-screen transparent keyboard overlay with gaze + keypress typing."""
@@ -19,14 +29,20 @@ class VirtualKeyboard:
     def __init__(self, frame_w, frame_h):
         self.frame_w   = frame_w
         self.frame_h   = frame_h
-        self.kb_top    = 40                     # below HUD strip
-        self.kb_bot    = frame_h - TEXT_BAR_H   # above text bar
+        # Leave room at top for HUD and suggestion bar
+        self.kb_top    = 40 + SUGGEST_BAR_H        # shifted down
+        self.kb_bot    = frame_h - TEXT_BAR_H
         self.kb_h      = self.kb_bot - self.kb_top
         self.keys      = []
         self.typed     = ""
         self.hover_key = None
         self.flash_key = None
         self.flash_t   = 0.0
+
+        # Suggestion state
+        self._suggestions  = []   # list of up to 3 strings
+        self._sugg_rects   = []   # [(label, x, y, w, h), …] rebuilt each frame
+
         self._build_layout()
 
     # ── Layout ─────────────────────────────────────────────────────────────────
@@ -47,10 +63,39 @@ class VirtualKeyboard:
                 kw = key_w * 2 + KEY_MARGIN if label == 'SPC' else key_w
                 self.keys.append((label, x, y, kw, row_h))
 
+    # ── Suggestions API ────────────────────────────────────────────────────────
+
+    def set_suggestions(self, words):
+        """Update the top-3 word suggestions shown above the keyboard."""
+        self._suggestions = list(words[:3])
+
+    def _build_sugg_rects(self):
+        """Recompute suggestion chip geometry (called inside draw)."""
+        self._sugg_rects = []
+        if not self._suggestions:
+            return
+
+        n      = len(self._suggestions)
+        margin = KEY_MARGIN
+        bar_y  = 40                          # just below the HUD strip
+        chip_h = SUGGEST_BAR_H - margin * 2
+        total_w = self.frame_w - margin * (n + 1)
+        chip_w  = total_w // n
+
+        for i, word in enumerate(self._suggestions):
+            x = margin + i * (chip_w + margin)
+            y = bar_y + margin
+            self._sugg_rects.append((_SUGG_PREFIX + word, x, y, chip_w, chip_h))
+
     # ── Hit testing ────────────────────────────────────────────────────────────
 
     def key_at(self, gx, gy):
-        """Return label of key at screen pos (gx, gy), or None."""
+        """Return label of key/chip at screen pos (gx, gy), or None."""
+        # Check suggestion chips first
+        for label, x, y, kw, kh in self._sugg_rects:
+            if x <= gx < x + kw and y <= gy < y + kh:
+                return label
+        # Then regular keys
         for label, x, y, kw, kh in self.keys:
             if x <= gx < x + kw and y <= gy < y + kh:
                 return label
@@ -67,7 +112,9 @@ class VirtualKeyboard:
     # ── Key press ──────────────────────────────────────────────────────────────
 
     def press(self):
-        """Fire the currently hovered key (call on UP ARROW keydown)."""
+        """Fire the currently hovered key (call on UP ARROW keydown).
+        Returns the typed string (word for suggestions, single char for keys).
+        """
         if self.hover_key is None:
             return ''
         self._fire(self.hover_key)
@@ -76,7 +123,12 @@ class VirtualKeyboard:
         return self.hover_key
 
     def _fire(self, label):
-        if label == '<-':
+        if label.startswith(_SUGG_PREFIX):
+            word = label[len(_SUGG_PREFIX):]
+            # Replace the current partial word (text after last space)
+            parts = self.typed.rsplit(' ', 1)
+            self.typed = (parts[0] + ' ' if len(parts) > 1 else '') + word + ' '
+        elif label == '<-':
             self.typed = self.typed[:-1]
         elif label == 'SPC':
             self.typed += ' '
@@ -88,16 +140,57 @@ class VirtualKeyboard:
     # ── Drawing ────────────────────────────────────────────────────────────────
 
     def draw(self, frame):
-        """Render keyboard overlay onto frame in-place."""
+        """Render keyboard + suggestion bar overlay onto frame in-place."""
         h_f, w_f = frame.shape[:2]
         now = time.time()
 
-        # 1. Faint dark tint so keys are readable against the webcam feed
+        # Rebuild suggestion chip geometry each frame
+        self._build_sugg_rects()
+
+        # ── 0. Suggestion bar background ──────────────────────────────────
+        sugg_top = 40
+        sugg_bot = 40 + SUGGEST_BAR_H
+        if self._sugg_rects:
+            bar_ov = frame.copy()
+            cv2.rectangle(bar_ov, (0, sugg_top), (w_f, sugg_bot), (20, 20, 20), -1)
+            cv2.addWeighted(bar_ov, 0.55, frame, 0.45, 0, frame)
+            cv2.line(frame, (0, sugg_bot), (w_f, sugg_bot), (60, 60, 60), 1)
+
+        # ── 0b. Suggestion chips ──────────────────────────────────────────
+        for label, cx, cy, cw, ch in self._sugg_rects:
+            word     = label[len(_SUGG_PREFIX):]
+            is_hover = (label == self.hover_key)
+            is_flash = (label == self.flash_key)
+
+            if is_flash:
+                chip_col, alpha = COL_KEY_FLASH, 0.90
+            elif is_hover:
+                chip_col, alpha = COL_KEY_HOVER, 0.75
+            else:
+                chip_col, alpha = (50, 50, 80), 0.60
+
+            chip_ov = frame.copy()
+            cv2.rectangle(chip_ov, (cx, cy), (cx+cw, cy+ch), chip_col, -1)
+            cv2.addWeighted(chip_ov, alpha, frame, 1 - alpha, 0, frame)
+
+            border = (200, 200, 200) if is_flash else (100, 120, 160)
+            cv2.rectangle(frame, (cx, cy), (cx+cw, cy+ch), border, 1)
+
+            font   = cv2.FONT_HERSHEY_SIMPLEX
+            fscale = 0.55
+            thick  = 1
+            tcol   = (20, 20, 20) if is_flash else (230, 230, 255)
+            (tw, th), _ = cv2.getTextSize(word, font, fscale, thick)
+            tx = cx + (cw - tw) // 2
+            ty = cy + (ch + th) // 2
+            cv2.putText(frame, word, (tx, ty), font, fscale, tcol, thick, cv2.LINE_AA)
+
+        # ── 1. Faint dark tint over keyboard area ─────────────────────────
         overlay = frame.copy()
         cv2.rectangle(overlay, (0, self.kb_top), (w_f, self.kb_bot), (0, 0, 0), -1)
         cv2.addWeighted(overlay, PANEL_ALPHA, frame, 1 - PANEL_ALPHA, 0, frame)
 
-        # 2. Keys
+        # ── 2. Keys ───────────────────────────────────────────────────────
         for label, kx, ky, kw, kh in self.keys:
             if label == self.flash_key:
                 key_col, alpha = COL_KEY_FLASH, 0.9
@@ -123,8 +216,8 @@ class VirtualKeyboard:
             tcol = (20, 20, 20) if label == self.flash_key else COL_KEY_TEXT
             cv2.putText(frame, disp, (tx, ty), font, fscale, tcol, thick, cv2.LINE_AA)
 
-        # 3. Text output bar at the bottom
-        bar_y = self.kb_bot
+        # ── 3. Text output bar at the bottom ──────────────────────────────
+        bar_y  = self.kb_bot
         bar_ov = frame.copy()
         cv2.rectangle(bar_ov, (0, bar_y), (w_f, h_f), COL_TEXT_BAR, -1)
         cv2.addWeighted(bar_ov, 0.80, frame, 0.20, 0, frame)
