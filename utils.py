@@ -140,10 +140,10 @@ def draw_direction_hint(frame, sdx, sdy, w, h):
 
 # ── Gaze-Driven Cursor ─────────────────────────────────────────────────────────
 # Tuning knobs — adjust to taste
-CURSOR_SPEED      = 800   # max pixels/second at full deflection
-DEAD_ZONE_X       = 0.12  # horizontal dead zone
-DEAD_ZONE_Y       = 0.12  # vertical dead zone — raised; baseline subtraction handles drift
-SMOOTH_ALPHA      = 0.20  # EMA smoothing for raw offset
+CURSOR_SPEED      = 2400   # max pixels/second at full deflection
+DEAD_ZONE_X       = 0.045  # horizontal dead zone
+DEAD_ZONE_Y       = 0.045  # vertical dead zone — raised; baseline subtraction handles drift
+SMOOTH_ALPHA      = 0.5  # EMA smoothing for raw offset
 NEUTRAL_SAMPLES   = 45    # frames to average for neutral baseline (~1.5 sec)
 
 # ── Calibration ────────────────────────────────────────────────────────────────
