@@ -9,11 +9,11 @@ GazeKeys turns a standard laptop webcam into a full eye-tracking accessibility s
 
 ## The Problem
 
-Tomorrow, three people will be diagnosed with ALS and given a life expectancy of two to five years. The day after, three more. Amyotrophic Lateral Sclerosis is a relentless, progressive neurodegenerative disease that strips away every voluntary movement — your hands, your voice, your ability to breathe — while leaving your mind completely intact. There is no cure. Over 32,000 Americans are living with ALS today, and that number is projected to grow by 25% by 2040.
+Tomorrow, three people will die due to an incurable terminal illness. The day after, three more. Amyotrophic Lateral Sclerosis is a relentless, progressive neurodegenerative disease that strips away every voluntary movement- your hands, your voice, your ability to breathe- while leaving your mind completely intact. There is no cure. There is no slowing it down meaningfully. The average life expectancy after diagnosis is just two to five years, and fewer than 20% of patients survive beyond five years (Firebase). Today, over 32,000 Americans are living with ALS, and that number is projected to grow by 25% by 2040 (Google).
 
-What struck us was not just the cruelty of the disease itself — but the cruelty of what patients are left with. As ALS progresses, most patients lose the ability to use their hands entirely. And yet the tools that exist to help them communicate cost **$5,000 to $15,000**. Dedicated infrared eye tracking hardware is financially out of reach for most families. Many patients are left staring at a screen they cannot control, in a body they cannot move, unable to ask for water.
+What struck us was not just the cruelty of the disease itself- but the cruelty of what patients are left with. As ALS progresses, most patients lose the ability to use their hands entirely. And yet the tools that exist to help them communicate and interact with the world cost **$5,000 to $15,000**. Dedicated infrared eye tracking hardware, the gold standard for ALS communication, is financially out of reach for most families. Many patients are left staring at a screen they cannot control, in a body they cannot move, unable to ask for water.
 
-We built GazeKeys because we believe that's unacceptable — and fixable.
+We built GazeKeys because we believe that that's unacceptable- and fixable.
 
 ---
 
