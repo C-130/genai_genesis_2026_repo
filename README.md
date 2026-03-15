@@ -1,7 +1,7 @@
 # GazeKeys
 ### *ALS takes their hands. We give them back their voice.*
 
-> **"Look. Blink. Speak."**
+> **Disease takes their hands. We give them back their voice.**
 
 GazeKeys turns a standard laptop webcam into a full eye-tracking accessibility system for people with ALS and other motor disabilities — no specialist hardware required.
 
