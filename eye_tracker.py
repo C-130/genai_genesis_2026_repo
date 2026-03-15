@@ -177,7 +177,7 @@ def main():
                 cv2.circle(frame, (int(fx*w), int(fy*h)), 6, (0, 200, 80), -1)
 
         # ── HUD ───────────────────────────────────────────────────────────
-        draw_hud(frame, cal, w, h, cursor_active=not cal.active, cursor=cursor)
+        draw_hud(frame, cal, w, h, kb.upper, kb.email_status, cursor_active=not cal.active, cursor=cursor)
         cv2.putText(frame,
                     f"gaze offset  dx:{raw_dx:+.2f}  dy:{raw_dy:+.2f}",
                     (10, h - 60),

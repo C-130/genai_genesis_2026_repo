@@ -10,6 +10,7 @@
 
 import cv2
 import time
+from handle_email import open_email_draft, interpret_email_request
 
 from utils import (
     KB_ROWS, KEY_MARGIN, KB_ALPHA, PANEL_ALPHA, TEXT_BAR_H,
@@ -19,6 +20,7 @@ from utils import (
 
 # Height reserved for the suggestion bar (sits just above the first key row)
 SUGGEST_BAR_H = 48
+SEND_BAR_H = 48
 # Prefix used internally to distinguish suggestion keys from letter keys
 _SUGG_PREFIX  = "__SUGG__"
 
@@ -38,16 +40,19 @@ class VirtualKeyboard:
         self.hover_key = None
         self.flash_key = None
         self.flash_t   = 0.0
-
+        self.send_key = None
         # Suggestion state
         self._suggestions  = []   # list of up to 3 strings
         self._sugg_rects   = []   # [(label, x, y, w, h), …] rebuilt each frame
-
+        self.upper = False # Upper case or lower case (toggle with 'CAP' key)
+        self.email_status = ''
         self._build_layout()
 
     # ── Layout ─────────────────────────────────────────────────────────────────
 
     def _build_layout(self):
+        send_key_w = (self.frame_w - 4 * KEY_MARGIN) // 3
+        self.send_key = ('SEND', self.frame_w - send_key_w - KEY_MARGIN, 0, send_key_w, SEND_BAR_H)
         self.keys = []
         n_rows = len(KB_ROWS)
         row_h  = (self.kb_h - (n_rows + 1) * KEY_MARGIN) // n_rows
@@ -99,6 +104,10 @@ class VirtualKeyboard:
         for label, x, y, kw, kh in self.keys:
             if x <= gx < x + kw and y <= gy < y + kh:
                 return label
+        # Then send key
+        _, x, y, kw, kh = self.send_key if self.send_key else (None, -1, -1, -1, -1)
+        if x <= gx < x + kw and y <= gy < y + kh:
+            return 'SEND'
         return None
 
     # ── Per-frame update ───────────────────────────────────────────────────────
@@ -115,6 +124,7 @@ class VirtualKeyboard:
         """Fire the currently hovered key (call on UP ARROW keydown).
         Returns the typed string (word for suggestions, single char for keys).
         """
+        self.email_status = ''
         if self.hover_key is None:
             return ''
         self._fire(self.hover_key)
@@ -122,6 +132,16 @@ class VirtualKeyboard:
         self.flash_t   = time.time()
         if self.hover_key == 'SPC':
             return ' '
+        if self.hover_key == 'SEND':
+            try:
+                email_data = interpret_email_request(self.typed)
+                if len(email_data['address']) == 0:
+                    self.email_status = 'Error: No recipient email address found.'
+                else:
+                    open_email_draft(email_data['address'], email_data['subject'], email_data['cc'], email_data['body'])
+                    self.email_status = 'Email draft opened successfully.'
+            except Exception as e:
+                self.email_status = f'Error interpreting email request: {str(e)}'
         return self.hover_key
 
     def _fire(self, label):
@@ -136,7 +156,15 @@ class VirtualKeyboard:
             self.typed += ' '
         elif label == 'ENT':
             self.typed = ''
+        elif label == 'CAP':
+            self.upper = not self.upper
+        elif label == 'SEND':
+            pass
         else:
+            if self.upper:
+                label = label.split(" ")[0].upper()
+            else:
+                label = label.split(" ")[-1].lower()
             self.typed += label
 
     # ── Drawing ────────────────────────────────────────────────────────────────
@@ -158,6 +186,31 @@ class VirtualKeyboard:
             cv2.addWeighted(bar_ov, 0.55, frame, 0.45, 0, frame)
             cv2.line(frame, (0, sugg_bot), (w_f, sugg_bot), (60, 60, 60), 1)
 
+        # -- 0a. Send button ───────────────
+        if self.send_key:
+            label, cx, cy, cw, ch = self.send_key
+            is_hover = (label == self.hover_key)
+            is_flash = (label == self.flash_key)
+            if is_flash:
+                key_col, alpha = COL_KEY_FLASH, 0.90
+            elif is_hover:
+                key_col, alpha = COL_KEY_HOVER, 0.75
+            else:
+                key_col, alpha = (50, 50, 80), 0.60
+
+            key_ov = frame.copy()
+            cv2.rectangle(key_ov, (cx, cy), (cx+cw, cy+ch), key_col, -1)
+            cv2.addWeighted(key_ov, alpha, frame, 1 - alpha, 0, frame)
+            border = (200, 200, 200) if is_flash else (100, 120, 160)
+            cv2.rectangle(frame, (cx, cy), (cx+cw, cy+ch), border, 1)
+            font   = cv2.FONT_HERSHEY_SIMPLEX
+            fscale = 0.55
+            thick  = 1
+            tcol = (20, 20, 20) if is_flash else (230, 230, 255)
+            (tw, th), _ = cv2.getTextSize(label, font, fscale, thick)
+            tx = cx + (cw - tw) // 2
+            ty = cy + (ch + th) // 2
+            cv2.putText(frame, label, (tx, ty), font, fscale, tcol, thick, cv2.LINE_AA)
         # ── 0b. Suggestion chips ──────────────────────────────────────────
         for label, cx, cy, cw, ch in self._sugg_rects:
             word     = label[len(_SUGG_PREFIX):]
