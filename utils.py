@@ -105,7 +105,7 @@ def draw_eye_box(frame, iris_pt, x0, x1, y0, y1):
     cv2.circle(frame, (ix, iy), 4, (0, 255, 160), -1)
     cv2.rectangle(frame, (int(x0), int(y0)), (int(x1), int(y1)), (0, 255, 160), 1)
 
-def draw_hud(frame, cal, w, h, cursor_active=False, cursor=None):
+def draw_hud(frame, cal, w, h, upper, email_status, cursor_active=False, cursor=None):
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (w, 40), (20, 20, 20), -1)
     cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
@@ -124,6 +124,8 @@ def draw_hud(frame, cal, w, h, cursor_active=False, cursor=None):
         msg, col = f"Calibrating — look at dot, press SPACE  ({left} left)", (80, 180, 255)
     else:
         msg, col = "Press SPACE to start calibration  |  [Q] Quit", (200, 200, 200)
+    case = "Uppercase" if upper else "Lowercase"
+    msg += f" | {case} | {email_status}"
     cv2.putText(frame, msg, (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.50, col, 1, cv2.LINE_AA)
 
 def draw_direction_hint(frame, sdx, sdy, w, h):
@@ -154,10 +156,10 @@ CAL_GRID = [(cx, cy)
 # ── Virtual Keyboard ───────────────────────────────────────────────────────────
 # 4 rows: numbers/symbols, QWERTY, ASDF, ZXCV + specials
 KB_ROWS = [
-    ['1','2','3','4','5','6','7','8','9','0','.'],
-    ['Q','W','E','R','T','Y','U','I','O','P'],
-    ['A','S','D','F','G','H','J','K','L','ENT'],
-    ['Z','X','C','V','B','N','M',',','<-','SPC'],
+    ['~ `', '! 1','@ 2','# 3','$ 4','% 5','^ 6','& 7','* 8','( 9',') 0','_ -', '+ ='],
+    ['Q','W','E','R','T','Y','U','I','O','P', '{ [', '} ]', '| \\', 'CAP'],
+    ['A','S','D','F','G','H','J','K','L', ': ;', '\" \'', 'ENT'],
+    ['Z','X','C','V','B','N','M','< ,', '> .', '? /', '<-','SPC'],
 ]
 
 # The keyboard fills the full frame (set dynamically in VirtualKeyboard.__init__)
