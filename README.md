@@ -1,5 +1,5 @@
 # GazeKeys
-### *ALS takes their hands. We give them back their voice.*
+
 
 > **Disease takes their hands. We give them back their voice.**
 
