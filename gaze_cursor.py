@@ -76,7 +76,7 @@ class GazeCursor:
                 return 0.0
             sign = 1 if v > 0 else -1
             mag  = (abs(v) - dz) / max(1.0 - dz, 1e-6)
-            return sign * min(mag, 1.0)
+            return sign * min(max(mag, 0.0), 1.0)
 
         self.x += scale(vx, DEAD_ZONE_X) * CURSOR_SPEED * dt
         self.y += scale(vy, DEAD_ZONE_Y) * CURSOR_SPEED * dt
